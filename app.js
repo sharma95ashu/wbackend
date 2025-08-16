@@ -28,7 +28,7 @@ app.use(cors());
 
 app.use("/api", indexRoutes);
 
-// health check route
+// health check route changes
 app.get("/health", (req, res) => {
   res
     .status(200)
