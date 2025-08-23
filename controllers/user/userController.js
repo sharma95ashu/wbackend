@@ -1,6 +1,10 @@
 const User = require("../../models/user");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const dotenv = require("dotenv");
+
+// Calling the middlewares
+dotenv.config();
 
 // Helper function to check for missing fields
 const validateFields = (fields) => {
@@ -15,37 +19,36 @@ const validateFields = (fields) => {
 // Controller to login or create a new user
 const loginCreateUser = async (req, res, next) => {
   try {
-    const { user_phone, user_password, user_otp, user_email } = req.body;
+    const { phone, password, user_otp, email } = req.body;
 
     // Validation: Check for required fields
-    const missingField = validateFields({ user_phone, user_password });
+    const missingField = validateFields(
+      email ? { email, password } : { phone, password }
+    );
     if (missingField) {
       return res.status(400).json({ message: missingField });
     }
 
     const userData = await User.findOne(
-      user_email ? { email: user_email } : { phone: user_phone }
+      email ? { email: email } : { phone: phone }
     );
 
     if (!userData) {
-      const plainPassword = user_password;
+      const plainPassword = password;
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(plainPassword, salt);
 
       const newUser = await User.create({
         name: "Test",
-        email: user_email,
-        phone: user_phone,
+        email: email,
+        phone: phone,
         password: hashedPassword,
         role: "subscriber",
       });
 
       return res.status(200).json({ created: true, user: newUser });
     } else {
-      const isPasswordValid = await bcrypt.compare(
-        user_password,
-        userData.password
-      );
+      const isPasswordValid = await bcrypt.compare(password, userData.password);
 
       if (!isPasswordValid) {
         return res.status(401).json({ message: "Wrong Credentials!" });
@@ -64,8 +67,7 @@ const loginCreateUser = async (req, res, next) => {
 
         res.status(200).json({
           message: "Login successful",
-          token,
-          user: userData,
+          data: token,
         });
       }
     }
@@ -77,7 +79,7 @@ const loginCreateUser = async (req, res, next) => {
 // GET all users with pagination and search
 const getAllUsers = async (req, res, next) => {
   try {
-    const { page = 1, limit = 10, searchTerm = "" } = req.query;
+    const { page = 1, pageSize = 10, searchTerm = "" } = req.query;
 
     const regex = new RegExp(searchTerm, "i");
 
@@ -93,15 +95,16 @@ const getAllUsers = async (req, res, next) => {
     const total = await User.countDocuments(query);
     const users = await User.find(query)
       .select("-password")
-      .skip((page - 1) * limit)
-      .limit(Number(limit))
+      .skip((page - 1) * pageSize)
+      .limit(Number(pageSize))
       .sort({ createdAt: -1 });
 
     res.status(200).json({
-      total,
+      total_count: total,
       page: Number(page),
-      pageSize: Number(limit),
-      users,
+      pageSize: Number(pageSize),
+      data: users,
+      success: true,
     });
   } catch (error) {
     next(error);
@@ -121,7 +124,7 @@ const getUserById = async (req, res, next) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    res.status(200).json(singleUser);
+    res.status(200).json({ success: true, data: singleUser });
   } catch (error) {
     next(error);
   }
@@ -181,10 +184,62 @@ const deleteUser = async (req, res, next) => {
   }
 };
 
+// Controller to add a new user
+const addUser = async (req, res, next) => {
+  try {
+    const { name, phone, email, password, role, address } = req.body;
+
+    // 1. Basic validation
+    if (!name) {
+      return res.status(400).json({ message: "Name is required" });
+    }
+    if (!email && !phone) {
+      return res
+        .status(400)
+        .json({ message: "Either email or phone is required" });
+    }
+
+    // 2. Check if user already exists
+    const existingUser = await User.findOne({ phone });
+    if (existingUser) {
+      return res
+        .status(409)
+        .json({ message: "User with this phone no. already exists" });
+    }
+
+    // 3. Hash password if provided
+    let hashedPassword = "";
+    if (password) {
+      const salt = await bcrypt.genSalt(10);
+      hashedPassword = await bcrypt.hash(password, salt);
+    }
+
+    // 4. Create user object
+    const newUser = new User({
+      name,
+      phone,
+      email,
+      password: hashedPassword,
+      role: role,
+      address,
+    });
+
+    // 5. Save to DB
+    await newUser.save();
+
+    res
+      .status(200)
+      .json({ message: "User created successfully", success: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   loginCreateUser,
   getAllUsers,
   getUserById,
   updateUser,
   deleteUser,
+  addUser,
 };

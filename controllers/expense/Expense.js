@@ -51,23 +51,24 @@ exports.createExpense = async (req, res) => {
 // Get All Expenses (with search + pagination)
 exports.getAllExpenses = async (req, res) => {
   try {
-    const { page = 1, limit = 10, searchTerm = "" } = req.query;
+    const { page = 1, pageSize = 10, searchTerm = "" } = req.query;
     const query = searchTerm
       ? { customer: { $regex: searchTerm, $options: "i" } }
       : {};
 
     const expenses = await Expense.find(query)
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit))
+      .skip((page - 1) * pageSize)
+      .limit(parseInt(pageSize))
       .sort({ createdAt: -1 });
 
     const total = await Expense.countDocuments(query);
 
-    res.json({
+    res.status(200).json({
+      total_count: total,
+      page: Number(page),
+      pageSize: Number(pageSize),
       data: expenses,
-      total,
-      page: parseInt(page),
-      limit: parseInt(limit),
+      success: true,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -79,7 +80,10 @@ exports.getExpenseById = async (req, res) => {
   try {
     const expense = await Expense.findById(req.params.id);
     if (!expense) return res.status(404).json({ message: "Expense not found" });
-    res.json(expense);
+    res.status(200).json({
+      data: expense,
+      success: true,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
